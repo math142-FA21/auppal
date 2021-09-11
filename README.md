@@ -1,2 +1,1 @@
-# auppal
-Abhi Uppal's Repo for Math 143
+# Math 143 Repo
