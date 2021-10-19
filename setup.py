@@ -31,7 +31,7 @@ setup(
         "nbdev",
         "nbformat",
         "notebook",
-        "numpy==1.19.5",
+        "numpy",
         "openpyxl",
         "pandas",
         "pandasql",
