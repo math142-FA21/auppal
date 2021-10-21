@@ -12,7 +12,7 @@ setup(
     license="LICENSE.md",
     description="Code for Abhi Uppal's Math 142 Project",
     long_description=open("README.md").read(),
-    py_modules=["diffgeo"],
+    py_modules=["diffgeo", "diffgeo.data"],
     package_data={"": ["*.csv"]},
     include_package_data=True,
     install_requires=[
@@ -39,7 +39,6 @@ setup(
         "python-dotenv",
         "pytz",
         "ratelimit",
-        "scipy==1.7.1"
-        "yfinance",
+        "scipy==1.7.1" "yfinance",
     ],
 )
