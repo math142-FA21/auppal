@@ -39,6 +39,7 @@ setup(
         "python-dotenv",
         "pytz",
         "ratelimit",
-        "scipy==1.7.1" "yfinance",
+        "scipy==1.7.1",
+        "yfinance",
     ],
 )
