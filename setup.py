@@ -30,6 +30,7 @@ setup(
         "nbconvert",
         "nbdev",
         "nbformat",
+        "networkx",
         "notebook",
         "numpy",
         "openpyxl",
