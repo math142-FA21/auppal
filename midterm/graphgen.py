@@ -1,5 +1,12 @@
+# NOTE: Graph generation takes approximately 240 / (N-2) minutes, where N = The number of CPU cores you have
+# That means, for an 8-core CPU, it will take about 40 minutes to generate all of the graphs
+
+import json
 import networkx as nx
 from networkx.algorithms.components.connected import is_connected
+import matplotlib.pyplot as plt
+import multiprocessing as mp
+from networkx.algorithms.connectivity.kcomponents import _generate_partition
 import numpy as np
 import pandas as pd
 import time
@@ -21,7 +28,44 @@ def matrix_sort(matrix: np.array):
     return np.dstack(np.unravel_index(np.argsort(matrix.ravel()), mshape))
 
 
-def generate_graph(df: pd.DataFrame, metric_matrix, symmetric: bool = None):
+def compute_metric(df: pd.DataFrame, metric: str = "spearman"):
+    """Computation of various metrics"""
+    if metric == "spearman":
+        corrmat = np.array(df.corr(method="spearman"))
+        metmat = np.sqrt(2 * (1 - corrmat))
+    return metmat
+
+
+def create_slices(df: pd.DataFrame, T: int):
+    """create_slices creates the slices for which we will split a dataframe on"""
+    partitions = []
+    shifted = df.shift(periods=T).iloc[T:, :]
+
+    dfidxlist = list(df.index)
+    shiftedidxlist = list(shifted.index)
+
+    for i in range(len(shiftedidxlist)):
+        partitions.append([dfidxlist[i], shiftedidxlist[i]])
+
+    return partitions
+
+
+def generate_graph(
+    df: pd.DataFrame,
+    metric_matrix: np.array = None,
+    partition: list = None,
+    symmetric: bool = None,
+    metric: str = "spearman",
+    save: str = None,
+):
+    """Generates a graph of a dataframe using a matrix representing the metric"""
+
+    if partition is not None:
+        df = df.loc[partition[0] : partition[1], :]
+
+    if metric_matrix is None:
+        metric_matrix = compute_metric(df=df, metric=metric)
+
     # If metric is symmetric, get rid of the top half of the matrix (plus the diagonal):
     if symmetric is None:
         symmetric = _check_symmetric(metric_matrix)
@@ -31,23 +75,92 @@ def generate_graph(df: pd.DataFrame, metric_matrix, symmetric: bool = None):
     # Compute the absolute value of the metric matrix
     metric_matrix[np.isclose(metric_matrix, np.zeros(metric_matrix.shape))] = np.nan
     sorted_metric = matrix_sort(metric_matrix)[0]
-    print(sorted_metric.shape)
 
     # Generate the MST
     # Initialize an empty graph
-    G = nx.Graph()
-    G.add_nodes_from(list(range(len((df.columns)))))
-    while not nx.is_connected(G):
+    gengraph = nx.Graph()
+    gengraph.add_nodes_from(list(range(len((df.columns)))))
+
+    # Iteratively add links until G is connected (to turn it into a spanning tree)
+    while not nx.is_connected(gengraph):
         row, col = sorted_metric[0][0], sorted_metric[0][1]
         d = metric_matrix[row, col]
-        if not G.has_edge(row, col):
-            G.add_edge(row, col, weight=d)
-        sorted_metric = np.delete(sorted_metric,obj=0, axis=0)
+        if not gengraph.has_edge(row, col):
+            gengraph.add_edge(row, col, weight=d)
+        sorted_metric = np.delete(sorted_metric, obj=0, axis=0)
 
-    return None
+    if save is not None:
+        adj = nx.convert_matrix.to_numpy_array(gengraph)
+        np.savez(save, adj)
+
+    return gengraph
 
 
-if __name__ == "__main__":
+def graphgen_sync(
+    df: pd.DataFrame, T: int = 25, metric: str = "spearman", folder: str = None
+):
+    graphs = []
+    partitions = create_slices(df, T=T)
+    dfs = [df.loc[partition[0] : partition[1]] for partition in partitions]
+    for df in dfs:
+        graphs.append(generate_graph(df, metric=metric))
+    return graphs
+
+
+class Copier(object):
+    """Class that allows a psuedo-lambda function to be passed into graphgen"""
+
+    def __init__(
+        self,
+        metric_matrix=None,
+        partition=None,
+        symmetric=None,
+        metric="spearman",
+        save=None,
+    ):
+        self.metric_matrix = metric_matrix
+        self.partition = partition
+        self.symmetric = symmetric
+        self.metric = metric
+        self.save = save
+
+    def __call__(self, df):
+        return generate_graph(
+            df,
+            self.metric_matrix,
+            self.partition,
+            self.symmetric,
+            self.metric,
+            self.save,
+        )
+
+
+def graphgen_mp(
+    df: pd.DataFrame, T: int = 25, metric: str = "spearman", folder: str = None
+):
+    partitions = create_slices(df, T=T)
+    dfs = [df.loc[partition[0] : partition[1]] for partition in partitions]
+    with mp.Pool(mp.cpu_count() - 2) as p:
+        graphs = p.map(
+            Copier(
+                metric_matrix=None,
+                partition=None,
+                symmetric=True,
+                metric=metric,
+                save=None,
+            ),
+            dfs,
+        )
+
+        As = []
+
+        for g in graphs:
+            As.append(nx.convert_matrix.to_numpy_array(g))
+
+        return graphs, As
+
+
+def main():
     with pkg_resources.open_text("diffgeo.data", "adjclose.csv") as f:
         df = pd.read_csv(f)
     df.set_index("Date", inplace=True)
@@ -57,15 +170,20 @@ if __name__ == "__main__":
     for c in [c for c in df.columns if df[c].dtype in numerics]:
         df[c] = np.log10(df[c])
     df = df.diff().iloc[1:, :]
-    # df = df.loc[:, "AAPL":"ADM"]
+    # df = df.loc["2020-01-01":, :]
 
     # Encode the relationship between the column names and index numbers in the graph
     encoder = bidict(enumerate(list(df.columns)))
+    with open("nodenames.json", "w") as f:
+        json.dump(f, encoder)
 
-    corrmat = np.array(df.corr(method="spearman"))
-    metric = np.sqrt(2 * (1 - corrmat))
     t0 = time.time()
-    generate_graph(df=df, metric_matrix=metric)
+    # Gs, As = graphgen_mp(df)
     tf = time.time()
-
     print(f"Time Elapsed: {tf - t0} seconds")
+    # fnames = {f"partition_{i}": A for i, A in enumerate(As)}
+    # np.savez("graphs/spearman_25_difflog/adjs", **fnames)
+
+
+if __name__ == "__main__":
+    main()
