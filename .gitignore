@@ -130,3 +130,4 @@ dmypy.json
 
 # Misc Files
 *.DS_Store
+midterm/graphs/*
