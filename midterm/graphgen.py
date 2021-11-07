@@ -11,8 +11,6 @@ import numpy as np
 import pandas as pd
 import time
 
-from bidict import bidict
-
 try:
     import importlib.resources as pkg_resources
 except ImportError:
@@ -173,7 +171,7 @@ def main():
     # df = df.loc["2020-01-01":, :]
 
     # Encode the relationship between the column names and index numbers in the graph
-    encoder = bidict(enumerate(list(df.columns)))
+    encoder = {i: col for i, col in enumerate(list(df.columns))}
     with open("nodenames.json", "w") as f:
         json.dump(f, encoder)
 
