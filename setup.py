@@ -22,6 +22,7 @@ setup(
         "bidict",
         "black==21.7b0",
         "datetime",
+        "dcor",
         "dvc[gdrive,gs]",
         "flake8==3.9.2",
         "matplotlib",
