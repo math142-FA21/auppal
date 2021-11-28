@@ -130,4 +130,7 @@ dmypy.json
 
 # Misc Files
 *.DS_Store
-midterm/graphs/*
+midterm/spearman_25/graphs/*
+midterm/spearman_125/graphs/*
+midterm/dcorr_25/graphs/*
+midterm/dcorr_125/graphs/*
