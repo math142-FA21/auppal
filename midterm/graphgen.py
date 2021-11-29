@@ -1,6 +1,7 @@
 # NOTE: Graph generation takes approximately 240 / (N-2) minutes, where N = The number of CPU cores you have
 # That means, for an 8-core CPU, it will take about 40 minutes to generate all of the graphs
 
+import dcor
 import json
 import networkx as nx
 from networkx.algorithms.components.connected import is_connected
@@ -15,6 +16,8 @@ try:
     import importlib.resources as pkg_resources
 except ImportError:
     import importlib_resources as pkg_resources
+
+from sklearn.metrics import normalized_mutual_info_score as nmi
 
 
 def _check_symmetric(matrix, rtol=1e-05, atol=1e-08):
@@ -31,6 +34,16 @@ def compute_metric(df: pd.DataFrame, metric: str = "spearman"):
     if metric == "spearman":
         corrmat = np.array(df.corr(method="spearman"))
         metmat = np.sqrt(2 * (1 - corrmat))
+    elif metric == "dcor": # Takes about 5 min
+        mat = df.to_numpy()
+        metmat = np.zeros(
+            shape=(mat.shape[1], mat.shape[1])
+        )  # Want an n x n matrix, where n = number of cols
+        idxs = np.triu_indices(n=mat.shape[1])
+        for i in range(len(idxs[0])):
+            x = idxs[0][i]
+            y = idxs[1][i]
+            metmat[x][y] = dcor.distance_correlation(mat[:, x], mat[:, y])
     return metmat
 
 
@@ -54,6 +67,7 @@ def generate_graph(
     partition: list = None,
     symmetric: bool = None,
     metric: str = "spearman",
+    mst: bool = False,
     save: str = None,
 ):
     """Generates a graph of a dataframe using a matrix representing the metric"""
@@ -83,8 +97,12 @@ def generate_graph(
     while not nx.is_connected(gengraph):
         row, col = sorted_metric[0][0], sorted_metric[0][1]
         d = metric_matrix[row, col]
-        if not gengraph.has_edge(row, col):
-            gengraph.add_edge(row, col, weight=d)
+        if not mst:
+            if not gengraph.has_edge(row, col):
+                gengraph.add_edge(row, col, weight=d)
+        else:
+            if not nx.has_path(gengraph, row, col):
+                gengraph.add_edge(row, col, weight=d)
         sorted_metric = np.delete(sorted_metric, obj=0, axis=0)
 
     if save is not None:
@@ -170,17 +188,14 @@ def main():
     df = df.diff().iloc[1:, :]
     # df = df.loc["2020-01-01":, :]
 
-    # Encode the relationship between the column names and index numbers in the graph
-    encoder = {i: col for i, col in enumerate(list(df.columns))}
-    with open("nodenames.json", "w") as f:
-        json.dump(f, encoder)
-
     t0 = time.time()
-    # Gs, As = graphgen_mp(df)
+    Gs, As = graphgen_mp(df, T=25, mst = True)
+    # testmetric = compute_metric(df, metric="spearman")
     tf = time.time()
     print(f"Time Elapsed: {tf - t0} seconds")
-    # fnames = {f"partition_{i}": A for i, A in enumerate(As)}
-    # np.savez("graphs/spearman_25_difflog/adjs", **fnames)
+    # print(testmetric)
+    fnames = {f"partition_{i}": A for i, A in enumerate(As)}
+    np.savez("spearman_25_mst/graphs/adjs", **fnames)
 
 
 if __name__ == "__main__":
