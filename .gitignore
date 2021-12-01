@@ -132,5 +132,5 @@ dmypy.json
 *.DS_Store
 midterm/spearman_25/graphs/*
 midterm/spearman_125/graphs/*
-midterm/dcorr_25/graphs/*
-midterm/dcorr_125/graphs/*
+midterm/spearman_25_mst/graphs/*
+midterm/spearman_125P_mst/graphs/*
