@@ -18,6 +18,15 @@ except ImportError:
     import importlib_resources as pkg_resources
 
 
+def counted(f):
+    def wrapped(*args, **kwargs):
+        wrapped.calls += 1
+        return f(*args, **kwargs)
+
+    wrapped.calls = 0
+    return wrapped
+
+
 def create_slices(df: pd.DataFrame, T: int):
     """create_slices creates the slices for which we will split a dataframe on"""
     partitions = []
@@ -32,8 +41,10 @@ def create_slices(df: pd.DataFrame, T: int):
     return partitions
 
 
-def load_graphs(slice: Union[list, tuple] = None):
-    graphs = np.load("graphs/spearman_25_difflog/adjs.npz")
+def load_graphs(
+    path: str = "spearman_25/graphs/adjs.npz", slice: Union[list, tuple] = None
+):
+    graphs = np.load(path)
     As = (
         [graphs[key] for key in graphs.files]
         if slice is None
@@ -44,8 +55,10 @@ def load_graphs(slice: Union[list, tuple] = None):
     return Gs, As
 
 
-def load_curvature_matrices(slice: Union[list, tuple] = None):
-    ks = np.load("graphs/spearman_25_difflog/ricci.npz")
+def load_curvature_matrices(
+    path: str = "spearman_25/graphs/ricci.npz", slice: Union[list, tuple] = None
+):
+    ks = np.load(path)
     if slice is None:
         ret = [ks[key] for key in ks.files]
     else:
@@ -75,58 +88,100 @@ def ricci_matrix(G: nx.Graph, adj_matrix: np.array):
     return ricci
 
 
-def ricci_mp(Gs: List[nx.Graph], As: List[np.array]):
+def ricci_mp(Gs: List[nx.Graph], As: List[np.array], savepath: str = None):
     partition = list((range(len(Gs))))
     args_to_pass = [(Gs[i], As[i]) for i in range(len(Gs))]
 
     with mp.Pool(mp.cpu_count() - 2) as p:
         curvature = p.starmap(ricci_matrix, args_to_pass)
 
+    if savepath is not None:
+        fnames = {
+            f"partition_{i}": R for i, R in enumerate(curvature)
+        }  # R = curvature matrix
+        np.savez(savepath, **fnames)
+
     return curvature
 
 
-def graph_features(Gs: List[nx.Graph]):
+class ClusteringCopier:
+    def __init__(self, weight="weight"):
+        self.weight = weight
+
+    @counted
+    def __call__(self, G):
+        if self.__call__.calls % 100 == 0:
+            print(f"Iteration {self.__call__.calls}")
+
+        return nx.average_clustering(G, weight=self.weight)
+
+
+def graph_features(Gs: List[nx.Graph], cores: bool = False):
     """Computes features other than the ricci curvature using the graphs"""
     nedges = []
     density = []
     clustering = []
+    avgweight = []
+
+    with mp.Pool(2) as p:
+        clustering = p.map(ClusteringCopier(), Gs)
 
     for G in Gs:
+        A = nx.linalg.graphmatrix.adjacency_matrix(G)
         nedges.append(G.number_of_edges())
         density.append(nx.density(G))
-        clustering.append(nx.average_clustering(G, weight="weight"))
+        avgweight.append(np.mean(A) / 2)
 
-    out = {"num_edges": nedges, "density": density, "avg_clustering": clustering}
+    out = {
+        "num_edges": nedges,
+        "density": density,
+        "avg_clustering": clustering,
+        "average_weight": avgweight,
+    }
 
     return out
 
 
+def construct_df(path: str = "spearman_25/", slice: Union[list, tuple] = None):
+    """Constructs a feature dataframe where each row represents a graph.
+    NOTE: This function takes a ridculous amount of RAM (~40 GB) to run"""
+    path += "/" if "/" not in path else ""
+    graphpaths = path + "graphs/adjs.npz"
+    ricci_path = path + "graphs/ricci.npz"
+
+    Gs, As = load_graphs(graphpaths, slice=slice)
+    Ks = load_curvature_matrices(ricci_path, slice=slice)
+    avgK = []
+
+    print("Graphs and curvature matrices are loaded")
+
+    featuredict = graph_features(Gs)
+    for i in range(len(Ks)):
+        avgK.append(np.nanmean(Ks[i]))
+
+    featuredict["avg_curvature"] = avgK
+
+    df = pd.DataFrame(featuredict)
+    df.to_csv(path + "features.csv")
+
+    return df
+
+
 def main():
-    Gs_start, As_start = load_graphs(slice=[0, 10])
-    Gs_rec, As_rec = load_graphs(slice=[1025, 1035])
-    print("Graphs are loaded")
+    mp.set_start_method("spawn")
+    # Gs, As = load_graphs("spearman_125/graphs/adjs.npz", slice=[0, 10])
+    # print("Graphs are loaded")
     with pkg_resources.open_text("diffgeo.data", "adjclose.csv") as f:
         df = pd.read_csv(f)
     df.set_index("Date", inplace=True)
-    partitions = create_slices(df, T=25)
+    partitions = create_slices(df, T=125)
     timecol = [partition[1] for partition in partitions[1:]]
-    timedecoder = {d: idx for idx, d in enumerate(timecol)}
-
     t0 = time.time()
-    Ginit, Grec = Gs_start[0], Gs_rec[0]
-    print(f"Number of intial edges: {nx.number_of_edges(Ginit)}")
-    print(f"Number of recession edges: {nx.number_of_edges(Grec)}")
-    nx.draw(Ginit, node_size=50, node_color="#283AF1")
-    plt.savefig("figures/initialgraph.png", dpi=400)
-    plt.show()
-    nx.draw(Grec, node_size=50, node_color="#F31A1A")
-    plt.savefig("figures/recessiongraph.png", dpi=400)
-    plt.show()
+    testdf = construct_df(path="spearman_125")
+    # ricci = ricci_mp(Gs=Gs, As=As, savepath="spearman_125_mst/graphs/ricci")
     tf = time.time()
+    print(testdf)
     print(f"Time elapsed: {tf - t0} seconds.")
-
-    print(df.head())
-    plt.show()
 
 
 # REASONS FOR DIFFERENCES

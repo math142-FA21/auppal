@@ -2,6 +2,7 @@
 # That means, for an 8-core CPU, it will take about 40 minutes to generate all of the graphs
 
 import dcor
+import functools
 import json
 import networkx as nx
 from networkx.algorithms.components.connected import is_connected
@@ -17,7 +18,15 @@ try:
 except ImportError:
     import importlib_resources as pkg_resources
 
-from sklearn.metrics import normalized_mutual_info_score as nmi
+from typing import Callable
+
+
+def counted(f):
+    def wrapped(*args, **kwargs):
+        wrapped.calls += 1
+        return f(*args, **kwargs)
+    wrapped.calls = 0
+    return wrapped
 
 
 def _check_symmetric(matrix, rtol=1e-05, atol=1e-08):
@@ -34,7 +43,7 @@ def compute_metric(df: pd.DataFrame, metric: str = "spearman"):
     if metric == "spearman":
         corrmat = np.array(df.corr(method="spearman"))
         metmat = np.sqrt(2 * (1 - corrmat))
-    elif metric == "dcor": # Takes about 5 min
+    elif metric == "dcor":  # Takes about 5 min
         mat = df.to_numpy()
         metmat = np.zeros(
             shape=(mat.shape[1], mat.shape[1])
@@ -60,7 +69,7 @@ def create_slices(df: pd.DataFrame, T: int):
 
     return partitions
 
-
+@counted
 def generate_graph(
     df: pd.DataFrame,
     metric_matrix: np.array = None,
@@ -71,7 +80,8 @@ def generate_graph(
     save: str = None,
 ):
     """Generates a graph of a dataframe using a matrix representing the metric"""
-
+    if generate_graph.calls % 100 == 0:
+        print(f"Iteration {generate_graph.calls}.")
     if partition is not None:
         df = df.loc[partition[0] : partition[1], :]
 
@@ -132,12 +142,14 @@ class Copier(object):
         partition=None,
         symmetric=None,
         metric="spearman",
+        mst=None,
         save=None,
     ):
         self.metric_matrix = metric_matrix
         self.partition = partition
         self.symmetric = symmetric
         self.metric = metric
+        self.mst = mst
         self.save = save
 
     def __call__(self, df):
@@ -147,12 +159,13 @@ class Copier(object):
             self.partition,
             self.symmetric,
             self.metric,
+            self.mst,
             self.save,
         )
 
 
 def graphgen_mp(
-    df: pd.DataFrame, T: int = 25, metric: str = "spearman", folder: str = None
+    df: pd.DataFrame, T: int = 25, metric: str = "spearman", mst: bool = False, folder: str = None
 ):
     partitions = create_slices(df, T=T)
     dfs = [df.loc[partition[0] : partition[1]] for partition in partitions]
@@ -163,6 +176,7 @@ def graphgen_mp(
                 partition=None,
                 symmetric=True,
                 metric=metric,
+                mst=mst,
                 save=None,
             ),
             dfs,
@@ -189,13 +203,13 @@ def main():
     # df = df.loc["2020-01-01":, :]
 
     t0 = time.time()
-    Gs, As = graphgen_mp(df, T=25, mst = True)
+    Gs, As = graphgen_mp(df, T=125, mst=True)
     # testmetric = compute_metric(df, metric="spearman")
     tf = time.time()
     print(f"Time Elapsed: {tf - t0} seconds")
     # print(testmetric)
     fnames = {f"partition_{i}": A for i, A in enumerate(As)}
-    np.savez("spearman_25_mst/graphs/adjs", **fnames)
+    np.savez("spearman_125_mst/graphs/adjs", **fnames)
 
 
 if __name__ == "__main__":
