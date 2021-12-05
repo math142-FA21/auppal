@@ -324,6 +324,7 @@ def density(show: bool = False, gtype: str = "spearman_25"):
         fig.show()
     return fig
 
+
 def avg_weight(show: bool = False, gtype: str = "spearman_25"):
     gtype = gtype + "/" if "/" not in gtype else gtype
     path = gtype + "graph_features_transformed.csv"
@@ -331,7 +332,7 @@ def avg_weight(show: bool = False, gtype: str = "spearman_25"):
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
-            name="Average Edge Weight.",
+            name="Average Edge Weight",
             mode="lines",
             x=df.index,
             y=df["avg_weight"],
@@ -377,6 +378,7 @@ def avg_weight(show: bool = False, gtype: str = "spearman_25"):
     if show:
         fig.show()
     return fig
+
 
 def delta_edges_over_time(show: bool = False):
     df = load_data()
@@ -431,25 +433,35 @@ def delta_edges_over_time(show: bool = False):
     return fig
 
 
-def main():
+def main(gtype: str = "spearman_25"):
+    gtype = gtype + "/" if "/" not in gtype else gtype
+    path = gtype + "figures/"
+    mst = "mst" in gtype.lower()
+
     pio.kaleido.scope.default_width = 1600
     pio.kaleido.scope.default_height = 1000
     plt.figure(figsize=(16, 16))
-    heat = heatmap()
-    edgeplot = edges_over_time()
-    edgeplot_delta = delta_edges_over_time()
-    curvatureplot = curvature()
-    clustering = clustering_coef()
-    densityplot = density()
+    heat = heatmap(gtype)
+    curvatureplot = curvature(gtype)
+    edgeweight = avg_weight(gtype)
+    if not mst:
+        edgeplot = edges_over_time(gtype)
+        clustering = clustering_coef(gtype)
+        densityplot = density(gtype)
+        edgeplot_delta = delta_edges_over_time(gtype)
+
     # df = load_data()
     # print(df.columns)
 
-    # heat.figure.savefig("figures/heatmap_spearman_25.png", dpi=400)
-    edgeplot.write_image("figures/edges.png")
-    edgeplot_delta.write_image("figures/edges_delta.png")
-    curvatureplot.write_image("figures/curvature.png")
-    clustering.write_image("figures/clustering.png")
-    densityplot.write_image("figures/densityplot.png")
+    heat.figure.savefig(path + "heatmap.png", dpi=400)
+    curvatureplot.write_image(path + "curvature.png")
+    edgeweight.write_image(path + "edgeweight.png")
+
+    if not mst:
+        edgeplot.write_image(path + "edges.png")
+        edgeplot_delta.write_image(path + "edges_delta.png")
+        clustering.write_image(path + "clustering.png")
+        densityplot.write_image(path + "densityplot.png")
 
 
 if __name__ == "__main__":
