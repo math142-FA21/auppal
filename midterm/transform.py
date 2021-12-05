@@ -73,6 +73,7 @@ def granger_tests(gtype: str = "spearman_125_mst"):
     path = gtype + "/" if "/" not in gtype else gtype
     path += "graph_features_transformed.csv"
     df = pd.read_csv(path)
+    testresults = {}
     mst = "mst" in gtype.lower()  # Helps determine the set of variables to use in tests
     if not mst:
         cols_to_iterate = [
@@ -91,8 +92,9 @@ def granger_tests(gtype: str = "spearman_125_mst"):
         print(f"GRANGER CAUSALITY TESTS FOR COLUMN: {col}")
         print("----------------------------------------------------")
         data = df[["sp500", col]]
-        grangercausalitytests(data, 5)
+        testresults[col] = grangercausalitytests(data, 5)
         print("\n")
+    return testresults
 
 
 def var_model(gtype: str = "spearnman_125", lags: int = 5):
@@ -155,6 +157,37 @@ def var_model(gtype: str = "spearnman_125", lags: int = 5):
     return model
 
 
+def process_granger_results(gtype: str = "spearman_25", lags: int = 5):
+    gcaus = granger_tests(gtype)  # keys: 1, 2, ..., 5
+    # n-th lag p-value: gcaus[n][0]["ssr_chi2test][1]
+    # cols: "density", "avg_clustering", "average_weight", "avg_curvature"
+    lags = list(range(1, lags + 1))
+    lagresults = {f"lag_{i}": [] for i in lags}
+    idx = []  # Index for DF to return
+    mst = "mst" in gtype.lower()
+
+    if not mst:
+        cols_to_iterate = [
+            "density",
+            "avg_clustering",
+            "average_weight",
+            "avg_curvature",
+        ]
+    else:
+        cols_to_iterate = ["average_weight", "avg_curvature"]
+
+    for col in cols_to_iterate:
+        for lag in lags:
+            pval = gcaus[col][lag][0]["ssr_chi2test"][1]
+            lagresults[f"lag_{lag}"].append(pval)
+        idx.append((gtype, col))
+
+    index = pd.MultiIndex.from_tuples(idx)
+    df = pd.DataFrame(index=index, data=lagresults)
+    df = df.round(3)
+    return df
+
+
 def main(gtype="spearman_125"):
     s25 = var_model("spearman_25")
     s125 = var_model("spearman_125")
@@ -185,5 +218,13 @@ def main2():
     return stargazer.render_latex()
 
 
+def main3():
+    graphtypes = ["spearman_25", "spearman_125", "spearman_25_mst", "spearman_125_mst"]
+    dfs = [process_granger_results(gtype=g, lags=5) for g in graphtypes]
+    return pd.concat(dfs)
+
+
 if __name__ == "__main__":
-    print(main())
+    pvals = main3()
+    print(pvals)
+    print(pvals.to_latex())
