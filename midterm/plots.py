@@ -15,48 +15,32 @@ def financial_crisis_times():
     covid = ["2020-03-01", "2020-08-01"]
 
 
-def load_data():
-
-    df = pd.read_csv("graph_features.csv")
-    df["delta_k"] = df["kfix"].diff()
-    df["delta_edges"] = df["number_of_edges"].diff()
-    df["delta_density"] = df["density"].diff()
-    df["delta_avg_clustering"] = df["avg_clustering"].diff()
-    df.set_index("time", inplace=True)
-
-    sp = yfinance.download(
-        tickers="SPY", period="max", interval="1d", auto_adjust=True
-    )["Close"]
-    sp = np.log10(sp).diff()
-    sp = sp.loc["2005-02-09":"2021-10-20"]
-
-    df["SP500"] = list(sp)
+def load_data(gtype: str = "spearman_25"):
+    gtype = gtype + "/" if "/" not in gtype else gtype
+    path = gtype + "graph_features_transformed.csv"
+    df = pd.read_csv(path)
+    df.set_index("Time", inplace=True)
+    df.drop(labels="Unnamed: 0", axis=1)
 
     df = df[
         [
-            "kfix",
+            "num_edges",
             "density",
             "avg_clustering",
-            "number_of_edges",
-            "delta_k",
-            "delta_edges",
-            "delta_density",
-            "delta_avg_clustering",
-            "SP500",
+            "average_weight",
+            "avg_curvature",
+            "sp500",
         ]
     ]
 
     df = df.rename(
         columns={
-            "kfix": "Curvature",
+            "num_edges": "Number of Edges",
             "density": "Density",
             "avg_clustering": "Average Clustering Coef.",
-            "number_of_edges": "Number of Edges",
-            "delta_k": "Change in Curvature",
-            "delta_edges": "Change in Edge Number",
-            "delta_density": "Change in Density",
-            "delta_avg_clustering": "Change in Avg. Clustering",
-            "SP500": "S&P500",
+            "average_weight": "Average Edge Weight",
+            "avg_curvature": "Average Curvature",
+            "sp500": "S&P500",
         }
     )
 
@@ -85,13 +69,9 @@ def triang(cormat, triang="lower"):
 
 
 def heatmap(show: bool = False, gtype: str = "spearman_25"):
-    gtype = gtype + "/" if "/" not in gtype else gtype
-    path = gtype + "graph_features_transformed.csv"
-    df = pd.read_csv(path)
+    df = load_data(gtype)
     pd.set_option("display.max_columns", 10)
-    print(df.columns)
     corr = df.corr().astype(float)
-    print(corr)
 
     fig = sns.heatmap(
         corr,
@@ -106,9 +86,10 @@ def heatmap(show: bool = False, gtype: str = "spearman_25"):
 
 
 def edges_over_time(show: bool = False, gtype: str = "spearman_25"):
-    gtype = gtype + "/" if "/" not in gtype else gtype
-    path = gtype + "graph_features_transformed.csv"
-    df = pd.read_csv(path)
+    date_decoder = {"25": "Feb 2005", "125": "Jul 2005"}
+    lagnum = gtype.split("_")[1]
+    lag_number = lagnum[:-1] if "/" in lagnum else lagnum
+    df = load_data(gtype)
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
@@ -151,7 +132,7 @@ def edges_over_time(show: bool = False, gtype: str = "spearman_25"):
     )
     fig.update_xaxes(dtick="M6", tickformat="%b\n%Y")
     fig.update_layout(
-        title="Edge Number Over Time, Jan 2005 - Oct 2021",
+        title=f"Number of Edges Over Time, {date_decoder[lag_number]} - Oct 2021",
         xaxis_title="Date",
         yaxis_title="Edge Number",
     )
@@ -161,16 +142,17 @@ def edges_over_time(show: bool = False, gtype: str = "spearman_25"):
 
 
 def curvature(show: bool = False, gtype: str = "spearman_25"):
-    gtype = gtype + "/" if "/" not in gtype else gtype
-    path = gtype + "graph_features_transformed.csv"
-    df = pd.read_csv(path)
+    date_decoder = {"25": "Feb 2005", "125": "Jul 2005"}
+    lagnum = gtype.split("_")[1]
+    lag_number = lagnum[:-1] if "/" in lagnum else lagnum
+    df = load_data(gtype)
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
-            name="Curvature",
+            name="Average Curvature",
             mode="lines",
             x=df.index,
-            y=df["Curvature"],
+            y=df["Average Curvature"],
             xperiodalignment="end",
         )
     )
@@ -206,7 +188,7 @@ def curvature(show: bool = False, gtype: str = "spearman_25"):
     )
     fig.update_xaxes(dtick="M6", tickformat="%b\n%Y")
     fig.update_layout(
-        title="Average Curvature Over Time, Jan 2005 - Oct 2021",
+        title=f"Average Curvature Over Time, {date_decoder[lag_number]} - Oct 2021",
         xaxis_title="Date",
         yaxis_title="Average Curvature",
     )
@@ -216,9 +198,10 @@ def curvature(show: bool = False, gtype: str = "spearman_25"):
 
 
 def clustering_coef(show: bool = False, gtype: str = "spearman_25"):
-    gtype = gtype + "/" if "/" not in gtype else gtype
-    path = gtype + "graph_features_transformed.csv"
-    df = pd.read_csv(path)
+    date_decoder = {"25": "Feb 2005", "125": "Jul 2005"}
+    lagnum = gtype.split("_")[1]
+    lag_number = lagnum[:-1] if "/" in lagnum else lagnum
+    df = load_data(gtype)
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
@@ -261,7 +244,7 @@ def clustering_coef(show: bool = False, gtype: str = "spearman_25"):
     )
     fig.update_xaxes(dtick="M6", tickformat="%b\n%Y")
     fig.update_layout(
-        title="Average Clustering Coefficient Over Time, Jan 2005 - Oct 2021",
+        title=f"Average Clustering Coefficient Over Time, {date_decoder[lag_number]} - Oct 2021",
         xaxis_title="Date",
         yaxis_title="Average Clustering Coefficient",
     )
@@ -271,9 +254,10 @@ def clustering_coef(show: bool = False, gtype: str = "spearman_25"):
 
 
 def density(show: bool = False, gtype: str = "spearman_25"):
-    gtype = gtype + "/" if "/" not in gtype else gtype
-    path = gtype + "graph_features_transformed.csv"
-    df = pd.read_csv(path)
+    date_decoder = {"25": "Feb 2005", "125": "Jul 2005"}
+    lagnum = gtype.split("_")[1]
+    lag_number = lagnum[:-1] if "/" in lagnum else lagnum
+    df = load_data(gtype)
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
@@ -287,9 +271,9 @@ def density(show: bool = False, gtype: str = "spearman_25"):
     fig.add_shape(  # Add rectangle for Great Recession
         type="rect",
         x0="2007-12-01",
-        y0=-2,
+        y0=0,
         x1="2009-06-01",
-        y1=2,
+        y1=1.25,
         line=dict(color="LightGray", width=0.5),
         fillcolor="LightGray",
         opacity=0.4,
@@ -297,9 +281,9 @@ def density(show: bool = False, gtype: str = "spearman_25"):
     fig.add_shape(  # Add rectangle for European Debt Crisis
         type="rect",
         x0="2010-04-01",
-        y0=-2,
+        y0=0,
         x1="2012-06-01",
-        y1=2,
+        y1=1.25,
         line=dict(color="LightGray", width=0.5),
         fillcolor="LightGray",
         opacity=0.4,
@@ -307,16 +291,16 @@ def density(show: bool = False, gtype: str = "spearman_25"):
     fig.add_shape(  # Add rectangle for COVID-19
         type="rect",
         x0="2020-03-01",
-        y0=-2,
+        y0=0,
         x1="2020-08-01",
-        y1=2,
+        y1=1.25,
         line=dict(color="LightGray", width=0.5),
         fillcolor="LightGray",
         opacity=0.4,
     )
     fig.update_xaxes(dtick="M6", tickformat="%b\n%Y")
     fig.update_layout(
-        title="Graph Density Over Time, Jan 2005 - Oct 2021",
+        title=f"Graph Density Over Time, {date_decoder[lag_number]} - Oct 2021",
         xaxis_title="Date",
         yaxis_title="Density",
     )
@@ -326,16 +310,17 @@ def density(show: bool = False, gtype: str = "spearman_25"):
 
 
 def avg_weight(show: bool = False, gtype: str = "spearman_25"):
-    gtype = gtype + "/" if "/" not in gtype else gtype
-    path = gtype + "graph_features_transformed.csv"
-    df = pd.read_csv(path)
+    date_decoder = {"25": "Feb 2005", "125": "Jul 2005"}
+    lagnum = gtype.split("_")[1]
+    lag_number = lagnum[:-1] if "/" in lagnum else lagnum
+    df = load_data(gtype)
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
             name="Average Edge Weight",
             mode="lines",
             x=df.index,
-            y=df["avg_weight"],
+            y=df["Average Edge Weight"],
             xperiodalignment="end",
         )
     )
@@ -371,9 +356,9 @@ def avg_weight(show: bool = False, gtype: str = "spearman_25"):
     )
     fig.update_xaxes(dtick="M6", tickformat="%b\n%Y")
     fig.update_layout(
-        title="Average Edge Weight Over Time, Jan 2005 - Oct 2021",
+        title=f"Average Edge Weight Over Time, {date_decoder[lag_number]} - Oct 2021",
         xaxis_title="Date",
-        yaxis_title="Average Clustering Coefficient",
+        yaxis_title="Average Edge Weight",
     )
     if show:
         fig.show()
@@ -381,6 +366,9 @@ def avg_weight(show: bool = False, gtype: str = "spearman_25"):
 
 
 def delta_edges_over_time(show: bool = False):
+    date_decoder = {"25": "Feb 2005", "125": "Jul 2005"}
+    lagnum = gtype.split("_")[1]
+    lag_number = lagnum[:-1] if "/" in lagnum else lagnum
     df = load_data()
     fig = go.Figure()
     fig.add_trace(
@@ -424,7 +412,7 @@ def delta_edges_over_time(show: bool = False):
     )
     fig.update_xaxes(dtick="M6", tickformat="%b\n%Y")
     fig.update_layout(
-        title="Change in Edge Number Over Time, Jan 2005 - Oct 2021",
+        title=f"Change in Edge Number Over Time, {date_decoder[lag_number]} - Oct 2021",
         xaxis_title="Date",
         yaxis_title="Change in Edge Number",
     )
@@ -438,32 +426,34 @@ def main(gtype: str = "spearman_25"):
     path = gtype + "figures/"
     mst = "mst" in gtype.lower()
 
+    # Create Figures
+
     pio.kaleido.scope.default_width = 1600
     pio.kaleido.scope.default_height = 1000
     plt.figure(figsize=(16, 16))
-    heat = heatmap(gtype)
-    curvatureplot = curvature(gtype)
-    edgeweight = avg_weight(gtype)
+    heat = heatmap(show=False, gtype=gtype)
+    curvatureplot = curvature(gtype=gtype)
+    edgeweight = avg_weight(gtype=gtype)
     if not mst:
-        edgeplot = edges_over_time(gtype)
-        clustering = clustering_coef(gtype)
-        densityplot = density(gtype)
-        edgeplot_delta = delta_edges_over_time(gtype)
+        edgeplot = edges_over_time(gtype=gtype)
+        clustering = clustering_coef(gtype=gtype)
+        densityplot = density(gtype=gtype)
 
-    # df = load_data()
-    # print(df.columns)
+    # Save Figures
 
     heat.figure.savefig(path + "heatmap.png", dpi=400)
     curvatureplot.write_image(path + "curvature.png")
     edgeweight.write_image(path + "edgeweight.png")
 
     if not mst:
-        edgeplot.write_image(path + "edges.png")
-        edgeplot_delta.write_image(path + "edges_delta.png")
+        edgeplot.write_image(path + "edgenumber.png")
         clustering.write_image(path + "clustering.png")
-        densityplot.write_image(path + "densityplot.png")
+        densityplot.write_image(path + "density.png")
 
 
 if __name__ == "__main__":
     pio.templates.default = "plotly_white"
-    main()
+    main(gtype="spearman_125")
+    main(gtype="spearman_25")
+    main(gtype="spearman_25_mst")
+    main(gtype="spearman_125_mst")
