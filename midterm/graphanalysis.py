@@ -162,7 +162,7 @@ def construct_df(path: str = "spearman_25/", slice: Union[list, tuple] = None):
     featuredict["avg_curvature"] = avgK
 
     df = pd.DataFrame(featuredict)
-    df.to_csv(path + "features.csv")
+    df.to_csv(path + "graph_features.csv")
 
     return df
 
